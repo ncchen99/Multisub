@@ -14,6 +14,7 @@ extension Notification.Name {
 /// Entry point is `MultiSubApp` (Phase G); this is installed via
 /// `@NSApplicationDelegateAdaptor` for lifecycle hooks SwiftUI's `Scene`
 /// doesn't cover (URL opens arriving before `AppRouter` can observe them).
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// D1: holds a `multisub://` URL that arrived before `AppRouter`

@@ -22,7 +22,8 @@ const DEFAULT_SETTINGS = {
   fontScale: 1.0,
   bottomOffset: 10,
   styles: DEFAULT_STYLES,
-  mergedMode: false
+  mergedMode: false,
+  displayMode: 'ai'
 };
 
 let settings = Object.assign({}, DEFAULT_SETTINGS);
@@ -39,6 +40,7 @@ function renderSettings() {
   el('fontScaleValue').textContent = Math.round(settings.fontScale * 100) + '%';
   el('bottomOffsetValue').textContent = settings.bottomOffset + '%';
   el('mergedMode').checked = !!settings.mergedMode;
+  el('displayMode').value = settings.displayMode || 'ai';
 }
 
 let saveTimer = null;
@@ -73,6 +75,10 @@ function bindInputs() {
   });
   el('mergedMode').addEventListener('change', (e) => {
     settings.mergedMode = e.target.checked;
+    saveSettings();
+  });
+  el('displayMode').addEventListener('change', (e) => {
+    settings.displayMode = e.target.value;
     saveSettings();
   });
   el('openStyles').addEventListener('click', openStyles);
@@ -152,6 +158,9 @@ async function refreshEpisodeStatus() {
     text += '：' + status.translatedCount + ' / ' + status.totalCues + ' 句';
   }
   if (status.errorHint) text = status.errorHint;
+  if (settings.displayMode === 'netflix' && status.status === 'error' && status.errorHint === 'MultiSub：找不到 Netflix 原生目標字幕') {
+    text = status.errorHint;
+  }
   el('episodeStatus').textContent = text;
 
   // D2: content.js is the source of truth for drag mode (not storage.local),
@@ -254,7 +263,15 @@ async function refreshNativeStatus() {
     const res = await api.runtime.sendMessage({ type: 'ping-native' });
     mergeStylesFromNative(res);
     if (res && res.ok) {
-      if (res.modelLoaded) {
+      if (res.translationEngine === 'api') {
+        if (res.apiKeyConfigured) {
+          node.textContent = 'API 已設定：' + (res.apiProvider || '');
+          node.className = 'ok';
+        } else {
+          node.textContent = 'API Key 尚未設定，請開啟 MultiSub App';
+          node.className = 'err';
+        }
+      } else if (res.modelLoaded) {
         node.textContent = '模型已就緒：' + (res.modelId || '');
         node.className = 'ok';
       } else if (res.modelDownloaded) {

@@ -65,6 +65,7 @@ api.runtime.onConnect.addListener((port) => {
     if (!msg) return;
     if (msg.type === 'episode') handleEpisode(port, msg, isDead);
     else if (msg.type === 'line') handleLine(port, msg, isDead);
+    else if (msg.type === 'annotate-line') handleAnnotateLine(port, msg, isDead);
     else if (msg.type === 'episode-title') handleEpisodeTitle(msg);
   });
 });
@@ -299,6 +300,31 @@ async function handleLine(port, { text, targetLang }, isDead) {
     safePost(port, { type: 'line-result', text: text, translation: translation }, isDead);
   } catch (e) {
     safePost(port, { type: 'line-result', text: text, code: e.code || classifyError(e) }, isDead);
+  }
+}
+
+async function handleAnnotateLine(port, { text, targetLang }, isDead) {
+  if (!text) return;
+  const cacheId = 'ann:' + targetLang + ' ' + text;
+  if (lineCache.has(cacheId)) {
+    safePost(port, { type: 'annotation-result', text: text, annotations: lineCache.get(cacheId) }, isDead);
+    return;
+  }
+  try {
+    const res = await sendNative({ action: 'annotate-line', text: text, targetLang: targetLang });
+    if (!res || res.ok !== true || !Array.isArray(res.annotations)) {
+      throw Object.assign(new Error(res && res.error || 'native-error'), { code: res && res.error });
+    }
+    const annotations = res.annotations
+      .filter((a) => a && a.term && a.translation)
+      .slice(0, 4);
+    lineCache.set(cacheId, annotations);
+    if (lineCache.size > LINE_CACHE_MAX) {
+      lineCache.delete(lineCache.keys().next().value);
+    }
+    safePost(port, { type: 'annotation-result', text: text, annotations: annotations }, isDead);
+  } catch (e) {
+    safePost(port, { type: 'annotation-result', text: text, code: e.code || classifyError(e) }, isDead);
   }
 }
 

@@ -28,16 +28,16 @@
 		4D580000000000000000AA08 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D580000000000000000AA04 /* MLXLLM */; };
 		4D580000000000000000AA09 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 4D580000000000000000AA05 /* MLXLMCommon */; };
 		4D580000000000000000AA0B /* TranslatorCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D580000000000000000AA0A /* TranslatorCore.swift */; };
+		4D580000000000000000AA0C /* TranslatorCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D580000000000000000AA0A /* TranslatorCore.swift */; };
+		4D580000000000000000AA0F /* ModelDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D580000000000000000AA0E /* ModelDownloader.swift */; };
+		4D580000000000000000AA11 /* stopwords-en.txt in Resources */ = {isa = PBXBuildFile; fileRef = 4D580000000000000000AA10 /* stopwords-en.txt */; };
+		4D580000000000000000AA13 /* cefr-wordlist-en.txt in Resources */ = {isa = PBXBuildFile; fileRef = 4D580000000000000000AA12 /* cefr-wordlist-en.txt */; };
 		4D580000000000000000AB09 /* MLXHuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 4D580000000000000000AB03 /* MLXHuggingFace */; };
 		4D580000000000000000AB0A /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 4D580000000000000000AB05 /* HuggingFace */; };
 		4D580000000000000000AB0B /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 4D580000000000000000AB07 /* Tokenizers */; };
 		4D580000000000000000AB0C /* MLXHuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 4D580000000000000000AB04 /* MLXHuggingFace */; };
 		4D580000000000000000AB0D /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 4D580000000000000000AB06 /* HuggingFace */; };
 		4D580000000000000000AB0E /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 4D580000000000000000AB08 /* Tokenizers */; };
-		4D580000000000000000AA0C /* TranslatorCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D580000000000000000AA0A /* TranslatorCore.swift */; };
-		4D580000000000000000AA0F /* ModelDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D580000000000000000AA0E /* ModelDownloader.swift */; };
-		4D580000000000000000AA11 /* stopwords-en.txt in Resources */ = {isa = PBXBuildFile; fileRef = 4D580000000000000000AA10 /* stopwords-en.txt */; };
-		4D580000000000000000AA13 /* cefr-wordlist-en.txt in Resources */ = {isa = PBXBuildFile; fileRef = 4D580000000000000000AA12 /* cefr-wordlist-en.txt */; };
 		4D580000000000000000AC11 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D580000000000000000AC01 /* DesignSystem.swift */; };
 		4D580000000000000000AC12 /* AppRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D580000000000000000AC02 /* AppRouter.swift */; };
 		4D580000000000000000AC13 /* ConfigStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D580000000000000000AC03 /* ConfigStore.swift */; };
@@ -84,7 +84,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		4D580000000000000000AE01 /* Local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig; sourceTree = SOURCE_ROOT; };
 		22F5F6512FF6D34D00A10F74 /* MultiSub.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MultiSub.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		22F5F6542FF6D34D00A10F74 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		22F5F6582FF6D34D00A10F74 /* Base */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = Base; path = Base.lproj/Main.html; sourceTree = "<group>"; };
@@ -127,6 +126,7 @@
 		4D580000000000000000AD07 /* VocabExtractionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabExtractionManager.swift; sourceTree = "<group>"; };
 		4D580000000000000000AD09 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 		4D580000000000000000AD0B /* UpdateDownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateDownloadManager.swift; sourceTree = "<group>"; };
+		4D580000000000000000AE01 /* Local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -164,6 +164,7 @@
 				22F5F6702FF6D34E00A10F74 /* MultiSub Extension */,
 				4D580000000000000000AA0D /* Shared */,
 				22F5F6522FF6D34D00A10F74 /* Products */,
+				9C7CF08A2FFB8DEB0017B8C1 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -202,6 +203,40 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
+		22F5F6702FF6D34E00A10F74 /* MultiSub Extension */ = {
+			isa = PBXGroup;
+			children = (
+				22F5F67D2FF6D34F00A10F74 /* Resources */,
+				22F5F6712FF6D34E00A10F74 /* SafariWebExtensionHandler.swift */,
+				22F5F6732FF6D34E00A10F74 /* Info.plist */,
+			);
+			path = "MultiSub Extension";
+			sourceTree = "<group>";
+		};
+		22F5F67D2FF6D34F00A10F74 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				22F5F67E2FF6D34F00A10F74 /* popup.js */,
+				22F5F67F2FF6D34F00A10F74 /* background.js */,
+				22F5F6802FF6D34F00A10F74 /* popup.html */,
+				22F5F6812FF6D34F00A10F74 /* overlay.css */,
+				22F5F6822FF6D34F00A10F74 /* manifest.json */,
+				22F5F6832FF6D34F00A10F74 /* inject.js */,
+				22F5F6842FF6D34F00A10F74 /* popup.css */,
+				22F5F6852FF6D34F00A10F74 /* content.js */,
+			);
+			name = Resources;
+			path = "MultiSub Extension";
+			sourceTree = SOURCE_ROOT;
+		};
+		4D580000000000000000AA0D /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				4D580000000000000000AA0A /* TranslatorCore.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
 		4D580000000000000000AC00 /* UI */ = {
 			isa = PBXGroup;
 			children = (
@@ -228,39 +263,13 @@
 			path = UI;
 			sourceTree = "<group>";
 		};
-		22F5F6702FF6D34E00A10F74 /* MultiSub Extension */ = {
+		9C7CF08A2FFB8DEB0017B8C1 /* Recovered References */ = {
 			isa = PBXGroup;
 			children = (
-				22F5F67D2FF6D34F00A10F74 /* Resources */,
-				22F5F6712FF6D34E00A10F74 /* SafariWebExtensionHandler.swift */,
-				22F5F6732FF6D34E00A10F74 /* Info.plist */,
+				4D580000000000000000AE01 /* Local.xcconfig */,
 			);
-			path = "MultiSub Extension";
+			name = "Recovered References";
 			sourceTree = "<group>";
-		};
-		4D580000000000000000AA0D /* Shared */ = {
-			isa = PBXGroup;
-			children = (
-				4D580000000000000000AA0A /* TranslatorCore.swift */,
-			);
-			path = Shared;
-			sourceTree = "<group>";
-		};
-		22F5F67D2FF6D34F00A10F74 /* Resources */ = {
-			isa = PBXGroup;
-			children = (
-				22F5F67E2FF6D34F00A10F74 /* popup.js */,
-				22F5F67F2FF6D34F00A10F74 /* background.js */,
-				22F5F6802FF6D34F00A10F74 /* popup.html */,
-				22F5F6812FF6D34F00A10F74 /* overlay.css */,
-				22F5F6822FF6D34F00A10F74 /* manifest.json */,
-				22F5F6832FF6D34F00A10F74 /* inject.js */,
-				22F5F6842FF6D34F00A10F74 /* popup.css */,
-				22F5F6852FF6D34F00A10F74 /* content.js */,
-			);
-			name = Resources;
-			path = "MultiSub Extension";
-			sourceTree = SOURCE_ROOT;
 		};
 /* End PBXGroup section */
 
@@ -584,13 +593,14 @@
 		22F5F6772FF6D34E00A10F74 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "MultiSub Extension/MultiSub Extension.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = V7H59QAJPL;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				CODE_SIGN_ENTITLEMENTS = "MultiSub Extension/MultiSub Extension.entitlements";
 				INFOPLIST_FILE = "MultiSub Extension/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "MultiSub Extension";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -605,27 +615,28 @@
 					"-framework",
 					SafariServices,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.seanhuang.multisub.Extension;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MULTISUB_BUNDLE_PREFIX).multisub.Extension";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
 		22F5F6782FF6D34E00A10F74 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "MultiSub Extension/MultiSub Extension.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = V7H59QAJPL;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				CODE_SIGN_ENTITLEMENTS = "MultiSub Extension/MultiSub Extension.entitlements";
 				INFOPLIST_FILE = "MultiSub Extension/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "MultiSub Extension";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -640,14 +651,14 @@
 					"-framework",
 					SafariServices,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.seanhuang.multisub.Extension;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MULTISUB_BUNDLE_PREFIX).multisub.Extension";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Release;
 		};
@@ -656,15 +667,16 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = MultiSub/MultiSub.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = V7H59QAJPL;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				CODE_SIGN_ENTITLEMENTS = "MultiSub/MultiSub.entitlements";
 				INFOPLIST_FILE = MultiSub/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = MultiSub;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -680,7 +692,7 @@
 					"-framework",
 					WebKit,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.seanhuang.multisub;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MULTISUB_BUNDLE_PREFIX).multisub";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -688,7 +700,7 @@
 				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
@@ -697,15 +709,16 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = MultiSub/MultiSub.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = V7H59QAJPL;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				CODE_SIGN_ENTITLEMENTS = "MultiSub/MultiSub.entitlements";
 				INFOPLIST_FILE = MultiSub/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = MultiSub;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -721,7 +734,7 @@
 					"-framework",
 					WebKit,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.seanhuang.multisub;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MULTISUB_BUNDLE_PREFIX).multisub";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -729,7 +742,7 @@
 				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Release;
 		};

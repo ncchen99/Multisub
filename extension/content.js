@@ -40,7 +40,8 @@
     fontScale: 1.0,
     bottomOffset: 10, // percent from bottom of the player
     styles: DEFAULT_STYLES,
-    mergedMode: false // D3: hide Netflix's native subtitle, show original+translation in our own overlay
+    mergedMode: false, // D3: hide Netflix's native subtitle, show original+translation in our own overlay
+    displayMode: 'ai' // ai | netflix | inline
   };
 
   // D2: must match popup.html's #bottomOffset slider min/max.
@@ -102,6 +103,8 @@
     fallbackCache: new Map(), // original text -> translation
     fallbackInflight: new Set(),
     fallbackCurrentText: '',
+    annotationCache: new Map(), // original text -> [{term, translation}]
+    annotationInflight: new Set(),
     // D2: drag-to-position mode. Lives only here (not storage.local) so it
     // doesn't linger enabled across page reloads; popup reads it back via
     // get-status's dragMode field.
@@ -144,12 +147,15 @@
     if (area !== 'local' || !changes.settings) return;
     const before = settings.targetLang;
     const wasEnabled = settings.enabled;
+    const beforeMode = settings.displayMode;
     settings = Object.assign({}, DEFAULT_SETTINGS, changes.settings.newValue || {});
     applySettingsToOverlay();
-    if (settings.targetLang !== before) {
+    if (settings.targetLang !== before || settings.displayMode !== beforeMode) {
       // Target language changed: the reference track (T2) depends on
       // targetLang too, so re-resolve it before retranslating.
       state.fallbackCache.clear();
+      state.annotationCache.clear();
+      state.annotationInflight.clear();
       if (state.cues.length) beginTranslationPipeline();
     } else if (settings.enabled && !wasEnabled && state.cues.length && state.status !== 'done') {
       // M1: background.js paused the episode loop (and unloaded the model)
@@ -376,6 +382,9 @@
   function decideTranslationStrategy() {
     const sourceTrack = state.tracks.find((t) => t.id === state.activeTrackId);
     const sourceLang = sourceTrack ? sourceTrack.language : '';
+    if (settings.displayMode === 'inline') {
+      return { mode: 'inline' };
+    }
     if (sourceLang && normalizeBcp47(sourceLang) === normalizeBcp47(settings.targetLang)) {
       dbg('decision: passthrough — source track language already matches targetLang', sourceLang, settings.targetLang);
       return { mode: 'passthrough' };
@@ -397,6 +406,15 @@
     if (state.referencePollTimer) { clearTimeout(state.referencePollTimer); state.referencePollTimer = null; }
 
     const decision = decideTranslationStrategy();
+    if (decision.mode === 'inline') {
+      state.referenceCues = [];
+      state.translations = [];
+      state.translatedCount = 0;
+      state.status = 'done';
+      state.errorHint = '';
+      state.lastRenderedKey = null;
+      return;
+    }
     if (decision.mode === 'passthrough') {
       state.referenceCues = [];
       state.translations = state.cues.map((c) => c.text);
@@ -409,6 +427,15 @@
 
     const refTrack = decision.referenceTrack;
     if (!refTrack) {
+      if (settings.displayMode === 'netflix') {
+        state.referenceCues = [];
+        state.translations = [];
+        state.translatedCount = 0;
+        state.status = 'error';
+        state.errorHint = 'MultiSub：找不到 Netflix 原生目標字幕';
+        state.lastRenderedKey = null;
+        return;
+      }
       state.referenceCues = [];
       startEpisodeTranslation();
       return;
@@ -556,6 +583,23 @@
       ? alignReferenceCues(state.cues, state.referenceCues)
       : new Array(state.cues.length).fill(null);
     state.referenceLines = referenceLines;
+    if (settings.displayMode === 'netflix') {
+      if (!state.referenceCues.length) {
+        state.translations = [];
+        state.translatedCount = 0;
+        state.status = 'error';
+        state.errorHint = 'MultiSub：找不到 Netflix 原生目標字幕';
+        state.lastRenderedKey = null;
+        return;
+      }
+      state.translations = referenceLines.map((line) => line || '');
+      state.translatedCount = state.translations.filter((line) => line).length;
+      state.status = 'done';
+      state.errorHint = '';
+      state.lastRenderedKey = null;
+      fetchAndStoreEpisodeTitle(state.urlMovieId, (state.tracks.find((t) => t.id === state.activeTrackId) || {}).language || '');
+      return;
+    }
     if (DEBUG && state.referenceCues.length) {
       dbg('reference-align sample (', state.referenceCues.length, 'ref cues ):');
       for (const idx of pickSampleIndices(state.cues.length, 10)) {
@@ -643,6 +687,16 @@
           state.errorHint = 'MultiSub：無法連到主程式，請開啟 MultiSub App';
         }
       }
+    } else if (msg.type === 'annotation-result') {
+      const text = msg.text || '';
+      state.annotationInflight.delete(text);
+      if (Array.isArray(msg.annotations)) {
+        state.annotationCache.set(text, msg.annotations);
+        state.lastRenderedKey = null;
+      }
+      if (msg.code === 'native-unavailable') {
+        state.errorHint = 'MultiSub：無法連到主程式，請開啟 MultiSub App';
+      }
     }
   }
 
@@ -690,6 +744,17 @@
       dbg('fallback: postMessage failed', e && e.message);
       state.port = null;
       state.fallbackInflight.delete(text);
+    }
+  }
+
+  function requestLineAnnotations(text) {
+    if (!text || state.annotationCache.has(text) || state.annotationInflight.has(text)) return;
+    state.annotationInflight.add(text);
+    try {
+      getPort().postMessage({ type: 'annotate-line', text: text, targetLang: settings.targetLang });
+    } catch (e) {
+      state.port = null;
+      state.annotationInflight.delete(text);
     }
   }
 
@@ -789,8 +854,11 @@
     overlay.style.setProperty('--multisub-font-weight', st.boldEnabled ? 'bold' : 'normal');
     overlay.style.display = settings.enabled ? '' : 'none';
     // D3: hide Netflix's own subtitle line only while the extension is on
-    // and merged mode is enabled — see overlay.css's html.multisub-native-hidden rule.
-    document.documentElement.classList.toggle('multisub-native-hidden', settings.enabled && !!settings.mergedMode);
+    // and merged/inline mode is enabled — see overlay.css's html.multisub-native-hidden rule.
+    document.documentElement.classList.toggle(
+      'multisub-native-hidden',
+      settings.enabled && (!!settings.mergedMode || settings.displayMode === 'inline')
+    );
   }
 
   function ensureOverlayAttached(video) {
@@ -819,11 +887,59 @@
     }
   }
 
-  function renderOverlay(text, hint, original) {
+  function setAnnotatedLine(container, text, annotations) {
+    container.textContent = '';
+    if (!text) return;
+    const safeAnnotations = Array.isArray(annotations) ? annotations
+      .filter((a) => a && a.term && a.translation)
+      .sort((a, b) => String(b.term).length - String(a.term).length)
+      : [];
+    const lines = text.split('\n');
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const div = document.createElement('div');
+      div.className = 'ms-line ms-annotated-line';
+      appendAnnotatedText(div, lines[lineIndex], safeAnnotations);
+      container.appendChild(div);
+    }
+  }
+
+  function appendAnnotatedText(parent, line, annotations) {
+    let pos = 0;
+    while (pos < line.length) {
+      let hit = null;
+      let hitIndex = -1;
+      for (const ann of annotations) {
+        const term = String(ann.term);
+        const idx = line.toLowerCase().indexOf(term.toLowerCase(), pos);
+        if (idx === -1) continue;
+        if (hit == null || idx < hitIndex || (idx === hitIndex && term.length > String(hit.term).length)) {
+          hit = ann;
+          hitIndex = idx;
+        }
+      }
+      if (!hit) break;
+      const term = String(hit.term);
+      if (hitIndex > pos) parent.appendChild(document.createTextNode(line.slice(pos, hitIndex)));
+      const mark = document.createElement('span');
+      mark.className = 'ms-term';
+      mark.textContent = line.slice(hitIndex, hitIndex + term.length);
+      const gloss = document.createElement('span');
+      gloss.className = 'ms-gloss';
+      gloss.textContent = hit.translation;
+      mark.appendChild(gloss);
+      parent.appendChild(mark);
+      pos = hitIndex + term.length;
+    }
+    if (pos < line.length) parent.appendChild(document.createTextNode(line.slice(pos)));
+  }
+
+  function renderOverlay(text, hint, original, annotations) {
     // D3: only show the original line in merged mode; otherwise Netflix's
     // own native subtitle (not hidden in that case) already shows it.
-    const showOriginal = !!settings.mergedMode && !!original;
-    const key = text + ' ' + hint + ' ' + (showOriginal ? original : '');
+    const inlineMode = settings.displayMode === 'inline';
+    const showOriginal = (!!settings.mergedMode || inlineMode) && !!original;
+    const key = text + ' ' + hint + ' ' + (showOriginal ? original : '') + ' ' +
+      (inlineMode ? JSON.stringify(annotations || []) : '');
     if (state.lastRenderedKey === key) return;
     state.lastRenderedKey = key;
     setOverlayLines(overlayText, text);
@@ -833,7 +949,12 @@
     overlayText.style.display = text ? 'flex' : 'none';
     overlayHint.textContent = hint;
     overlayHint.style.display = hint ? 'block' : 'none';
-    setOverlayLines(overlayOriginal, showOriginal ? original : '');
+    if (inlineMode) {
+      setAnnotatedLine(overlayOriginal, showOriginal ? original : '', annotations);
+    } else {
+      setOverlayLines(overlayOriginal, showOriginal ? original : '');
+    }
+    overlayOriginal.classList.toggle('multisub-inline-hints', inlineMode);
     overlayOriginal.style.display = showOriginal ? 'flex' : 'none';
   }
 
@@ -863,17 +984,34 @@
 
     let text = '';
     let original = '';
+    let annotations = null;
     if (!state.fallback && state.cues.length) {
       const idx = findCueIndex(video.currentTime);
       if (idx >= 0) {
         const tr = state.translations[idx];
-        text = tr != null ? tr : '';
         original = state.cues[idx].text || '';
+        if (settings.displayMode === 'inline') {
+          if (original) {
+            if (state.annotationCache.has(original)) {
+              annotations = state.annotationCache.get(original);
+            } else {
+              requestLineAnnotations(original);
+            }
+          }
+        } else {
+          text = tr != null ? tr : '';
+        }
       }
     } else if (state.fallback) {
       original = readDomSubtitle();
       state.fallbackCurrentText = original;
-      if (original) {
+      if (original && settings.displayMode === 'inline') {
+        if (state.annotationCache.has(original)) {
+          annotations = state.annotationCache.get(original);
+        } else {
+          requestLineAnnotations(original);
+        }
+      } else if (original) {
         if (state.fallbackCache.has(original)) {
           text = state.fallbackCache.get(original);
         } else {
@@ -881,7 +1019,7 @@
         }
       }
     }
-    renderOverlay(text, state.errorHint, original);
+    renderOverlay(text, state.errorHint, original, annotations);
   }
 
   // ---------------------------------------------------------------------------

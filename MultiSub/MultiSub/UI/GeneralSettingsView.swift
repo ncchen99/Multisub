@@ -11,7 +11,7 @@ import AppKit
 import SafariServices
 import SwiftUI
 
-let extensionBundleIdentifier = "com.seanhuang.multisub.Extension"
+let extensionBundleIdentifier = (Bundle.main.bundleIdentifier ?? "com.seanhuang.multisub") + ".Extension"
 
 @MainActor
 struct GeneralSettingsView: View {
@@ -28,6 +28,7 @@ struct GeneralSettingsView: View {
     @State private var extensionStatusText = "檢查中…"
     @State private var extensionStatusColor = Color.secondary
 
+    @State private var selectedEngine: TranslationEngine = .local
     @State private var selectedModelID = ""
     @State private var extraModelEntries: [ModelCatalogEntry] = []
     @State private var modelSizes: [String: Int64] = [:]
@@ -44,6 +45,11 @@ struct GeneralSettingsView: View {
     @State private var showDeleteBlocked = false
 
     @State private var idleUnloadMinutes = MultiSubConfig.defaultIdleUnloadMinutes
+    @State private var selectedAPIProviderID = APIProviderCatalog.openAI.id
+    @State private var apiModel = APIProviderCatalog.openAI.defaultModel
+    @State private var apiBaseURL = APIProviderCatalog.openAI.baseURL
+    @State private var apiKeyInput = ""
+    @State private var apiKeyStatus = ""
 
     @State private var testInput = "I can't believe you did that behind my back."
     @State private var testOutput = " "
@@ -57,45 +63,74 @@ struct GeneralSettingsView: View {
             }
 
             Section {
-                // Selecting a model here only ever writes `config.json` — it
-                // never starts a download itself (see `ModelDownloadManager`'s
-                // doc comment for why download and selection are kept fully
-                // independent). Plain Text rows, not a colored-dot Label:
-                // AppKit renders a pull-down menu's item images as template
-                // icons (verified by running the app — every dot came out
-                // flat black regardless of the color set here), so the tier
-                // signal has to live in the text itself.
-                // Only models that actually work right now (downloaded,
-                // whether via the picker below or dropped in manually) are
-                // selectable here — an undownloaded catalog entry belongs in
-                // the list below with a "下載" button, not in this picker.
-                Picker("翻譯模型", selection: $selectedModelID) {
-                    ForEach(downloadedEntries) { entry in
-                        Text(rowLabel(for: entry)).tag(entry.id)
+                Picker("翻譯方式", selection: $selectedEngine) {
+                    Text("本機模型").tag(TranslationEngine.local)
+                    Text("API").tag(TranslationEngine.api)
+                }
+                .pickerStyle(.segmented)
+
+                if selectedEngine == .api {
+                    Picker("供應商", selection: $selectedAPIProviderID) {
+                        ForEach(APIProviderCatalog.entries) { provider in
+                            Text(provider.displayName).tag(provider.id)
+                        }
+                    }
+                    TextField("模型名稱", text: $apiModel)
+                    TextField("Base URL", text: $apiBaseURL)
+                    SecureField("API Key", text: $apiKeyInput)
+                    HStack {
+                        Button("儲存 API Key") { saveAPIKey() }
+                            .disabled(apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        Button("移除 API Key", role: .destructive) { deleteAPIKey() }
+                            .disabled(!APIKeyStore.hasAPIKey(providerID: selectedAPIProviderID))
+                    }
+                    if !apiKeyStatus.isEmpty {
+                        Text(apiKeyStatus)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    // Selecting a model here only ever writes `config.json` —
+                    // it never starts a download itself (see
+                    // `ModelDownloadManager`'s doc comment for why download
+                    // and selection are kept fully independent). Plain Text
+                    // rows, not a colored-dot Label: AppKit renders a
+                    // pull-down menu's item images as template icons (verified
+                    // by running the app — every dot came out flat black
+                    // regardless of the color set here), so the tier signal
+                    // has to live in the text itself. Only models that
+                    // actually work right now (downloaded, whether via the
+                    // picker below or dropped in manually) are selectable here
+                    // — an undownloaded catalog entry belongs in the list
+                    // below with a "下載" button, not in this picker.
+                    Picker("翻譯模型", selection: $selectedModelID) {
+                        ForEach(downloadedEntries) { entry in
+                            Text(rowLabel(for: entry)).tag(entry.id)
+                        }
+                    }
+
+                    HStack {
+                        Button("在 Finder 中打開模型資料夾") { openModelsFolderInFinder() }
+                        Button("重新整理", systemImage: "arrow.clockwise") { refreshAll() }
+                            .labelStyle(.iconOnly)
+                    }
+
+                    ForEach(sizeSortedEntries) { entry in
+                        ModelRow(
+                            label: rowLabel(for: entry),
+                            dotColor: dotColor(for: entry),
+                            downloadState: downloadManager.downloads[entry.id],
+                            isDownloading: downloadManager.isDownloading(entry.id),
+                            isDownloaded: Translator.isModelDownloaded(entry.id),
+                            onDelete: { deleteModel(entry) },
+                            onDownload: { requestDownload(entry) }
+                        )
                     }
                 }
-
-                HStack {
-                    Button("在 Finder 中打開模型資料夾") { openModelsFolderInFinder() }
-                    Button("重新整理", systemImage: "arrow.clockwise") { refreshAll() }
-                        .labelStyle(.iconOnly)
-                }
-
-                ForEach(sizeSortedEntries) { entry in
-                    ModelRow(
-                        label: rowLabel(for: entry),
-                        dotColor: dotColor(for: entry),
-                        downloadState: downloadManager.downloads[entry.id],
-                        isDownloading: downloadManager.isDownloading(entry.id),
-                        isDownloaded: Translator.isModelDownloaded(entry.id),
-                        onDelete: { deleteModel(entry) },
-                        onDownload: { requestDownload(entry) }
-                    )
-                }
             } header: {
-                Text("模型")
+                Text("翻譯引擎")
             } footer: {
-                Text("模型越大通常翻譯品質越好，但需要更多記憶體與下載時間；下載完成後即存在本機，翻譯時不會重新下載。模型下載自 Hugging Face（MLX 格式），也可以自行在模型資料夾放入符合 MLX 格式的權重。\n此裝置實體記憶體 \(Self.formatBytes(Int64(ProcessInfo.processInfo.physicalMemory)))；紅燈表示模型磁碟大小超出建議上限（可強制選用），橘燈為警告。")
+                Text(translationSettingsFooter)
             }
             .alert("此模型可能超出裝置記憶體", isPresented: $showForceConfirm) {
                 Button("仍要使用", role: .destructive) {
@@ -183,11 +218,17 @@ struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .onChange(of: selectedEngine) { _, _ in commitTranslationEngine() }
+        .onChange(of: selectedAPIProviderID) { _, _ in handleAPIProviderSelection() }
+        .onChange(of: apiModel) { _, _ in commitAPISettings() }
+        .onChange(of: apiBaseURL) { _, _ in commitAPISettings() }
         .onChange(of: idleUnloadMinutes) { _, _ in commitIdleUnload() }
         .onChange(of: selectedModelID) { oldValue, newValue in handleModelSelection(oldValue: oldValue, newValue: newValue) }
         .task {
+            selectedEngine = configStore.config.translationEngine
             selectedModelID = configStore.config.modelID
             idleUnloadMinutes = configStore.config.idleUnloadMinutes
+            loadAPISettingsFromConfig()
             refreshExtensionStatus()
             refreshAll()
             // Lightweight periodic display refresh: picks up model files
@@ -204,8 +245,12 @@ struct GeneralSettingsView: View {
 
     // MARK: - Safari extension status
 
+    nonisolated private func queryExtensionState(completion: @escaping @Sendable (SFSafariExtensionState?, Error?) -> Void) {
+        SFSafariExtensionManager.getStateOfSafariExtension(withIdentifier: extensionBundleIdentifier, completionHandler: completion)
+    }
+
     private func refreshExtensionStatus() {
-        SFSafariExtensionManager.getStateOfSafariExtension(withIdentifier: extensionBundleIdentifier) { state, error in
+        queryExtensionState { state, error in
             Task { @MainActor in
                 if let state {
                     if state.isEnabled {
@@ -223,8 +268,85 @@ struct GeneralSettingsView: View {
         }
     }
 
+    nonisolated private func showSafariPreferences(completion: @escaping @Sendable (Error?) -> Void) {
+        SFSafariApplication.showPreferencesForExtension(withIdentifier: extensionBundleIdentifier, completionHandler: completion)
+    }
+
     private func openSafariPreferences() {
-        SFSafariApplication.showPreferencesForExtension(withIdentifier: extensionBundleIdentifier) { _ in }
+        showSafariPreferences { _ in }
+    }
+
+    // MARK: - Translation engine / API settings
+
+    private var translationSettingsFooter: String {
+        if selectedEngine == .api {
+            return "API 模式會從原生 App／擴充功能直接連線到選定供應商的 OpenAI 相容 Chat Completions 端點。API key 儲存在 macOS Keychain，不會寫入 config.json、原始碼或 Git。"
+        }
+        return "模型越大通常翻譯品質越好，但需要更多記憶體與下載時間；下載完成後即存在本機，翻譯時不會重新下載。模型下載自 Hugging Face（MLX 格式），也可以自行在模型資料夾放入符合 MLX 格式的權重。\n此裝置實體記憶體 \(Self.formatBytes(Int64(ProcessInfo.processInfo.physicalMemory)))；紅燈表示模型磁碟大小超出建議上限（可強制選用），橘燈為警告。"
+    }
+
+    private func loadAPISettingsFromConfig() {
+        selectedAPIProviderID = configStore.config.api.providerID
+        apiModel = configStore.config.api.model
+        apiBaseURL = configStore.config.api.baseURL
+        refreshAPIKeyStatus()
+    }
+
+    private func commitTranslationEngine() {
+        guard selectedEngine != configStore.config.translationEngine else { return }
+        configStore.config.translationEngine = selectedEngine
+        configStore.save()
+    }
+
+    private func handleAPIProviderSelection() {
+        let provider = APIProviderCatalog.entry(for: selectedAPIProviderID)
+        if provider.id != "custom" {
+            apiBaseURL = provider.baseURL
+            apiModel = provider.defaultModel
+        }
+        commitAPISettings()
+        refreshAPIKeyStatus()
+    }
+
+    private func commitAPISettings() {
+        guard selectedAPIProviderID != configStore.config.api.providerID ||
+              apiModel != configStore.config.api.model ||
+              apiBaseURL != configStore.config.api.baseURL else { return }
+        configStore.config.api.providerID = selectedAPIProviderID
+        configStore.config.api.model = apiModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        configStore.config.api.baseURL = apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        configStore.save()
+    }
+
+    private func refreshAPIKeyStatus(prefix: String? = nil) {
+        let provider = APIProviderCatalog.entry(for: selectedAPIProviderID).displayName
+        let hasKey = APIKeyStore.hasAPIKey(providerID: selectedAPIProviderID)
+        let state = hasKey ? "已設定" : "尚未設定"
+        if let prefix {
+            apiKeyStatus = "\(prefix)：\(provider) API Key \(state)"
+        } else {
+            apiKeyStatus = "\(provider) API Key \(state)"
+        }
+    }
+
+    private func saveAPIKey() {
+        do {
+            try APIKeyStore.setAPIKey(apiKeyInput, providerID: selectedAPIProviderID)
+            apiKeyInput = ""
+            refreshAPIKeyStatus(prefix: "已儲存")
+        } catch {
+            apiKeyStatus = "儲存失敗：\(error.localizedDescription)"
+        }
+    }
+
+    private func deleteAPIKey() {
+        do {
+            try APIKeyStore.deleteAPIKey(providerID: selectedAPIProviderID)
+            apiKeyInput = ""
+            refreshAPIKeyStatus(prefix: "已移除")
+        } catch {
+            apiKeyStatus = "移除失敗：\(error.localizedDescription)"
+        }
     }
 
     // MARK: - Idle-unload field commit
@@ -463,7 +585,7 @@ struct GeneralSettingsView: View {
         let text = testInput
         guard !text.isEmpty else { return }
         testRunning = true
-        testOutput = "翻譯中…（首次執行需載入模型，約 10–30 秒）"
+        testOutput = selectedEngine == .api ? "翻譯中…（使用 API）" : "翻譯中…（首次執行需載入模型，約 10–30 秒）"
 
         Task {
             do {

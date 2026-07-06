@@ -14,3 +14,7 @@
 // ID at run time, so signing with your own team just works — no source edits.
 
 DEVELOPMENT_TEAM = YOUR_TEAM_ID
+MULTISUB_BUNDLE_PREFIX = com.seanhuang
+
+// Disable Xcode 16's debug dylib feature which causes codesign issues
+ENABLE_DEBUG_DYLIB = NO

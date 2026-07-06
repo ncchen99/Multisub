@@ -8,7 +8,7 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.seanhuang.multisub</string>
+			<string>$(MULTISUB_BUNDLE_PREFIX).multisub</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>multisub</string>

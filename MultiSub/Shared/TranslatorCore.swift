@@ -48,7 +48,7 @@ enum MultiSubPaths {
     /// `migrateLegacyContainerOnce` below retains sandbox read access to the
     /// old container long enough to move existing users' model cache across.
     /// Not used for anything else.
-    static let legacyAppGroupID = "group.com.seanhuang.multisub"
+    static let legacyAppGroupID = "group." + (Bundle.main.bundleIdentifier ?? "com.seanhuang.multisub").replacingOccurrences(of: ".Extension", with: "")
 
     /// Both targets are sandboxed, so the model and config live in the shared
     /// App Group container, visible to the app and the Safari extension alike.
@@ -140,7 +140,9 @@ struct SubtitleStyle: Codable, Equatable {
 }
 
 struct MultiSubConfig: Codable {
+    var translationEngine: TranslationEngine = .local
     var modelID: String = MultiSubConfig.defaultModelID
+    var api: APITranslationConfig = APITranslationConfig()
     /// Minutes of translation inactivity before `Translator` auto-unloads the
     /// model to free memory (M2). `<= 0` disables auto-unload.
     var idleUnloadMinutes: Int = MultiSubConfig.defaultIdleUnloadMinutes
@@ -156,11 +158,13 @@ struct MultiSubConfig: Codable {
     // Custom decode so existing config.json files written before
     // `idleUnloadMinutes`/`styles` existed still decode instead of failing
     // wholesale and silently reverting modelID to the default too.
-    enum CodingKeys: String, CodingKey { case modelID, idleUnloadMinutes, styles }
+    enum CodingKeys: String, CodingKey { case translationEngine, modelID, api, idleUnloadMinutes, styles }
 
     init(from decoder: Swift.Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        translationEngine = try container.decodeIfPresent(TranslationEngine.self, forKey: .translationEngine) ?? .local
         modelID = try container.decodeIfPresent(String.self, forKey: .modelID) ?? Self.defaultModelID
+        api = try container.decodeIfPresent(APITranslationConfig.self, forKey: .api) ?? APITranslationConfig()
         idleUnloadMinutes = try container.decodeIfPresent(Int.self, forKey: .idleUnloadMinutes)
             ?? Self.defaultIdleUnloadMinutes
         styles = try container.decodeIfPresent(SubtitleStyle.self, forKey: .styles) ?? SubtitleStyle()
@@ -176,6 +180,130 @@ struct MultiSubConfig: Codable {
     func save() {
         if let data = try? JSONEncoder().encode(self) {
             try? data.write(to: MultiSubPaths.configFile, options: .atomic)
+        }
+    }
+}
+
+enum TranslationEngine: String, Codable, CaseIterable, Identifiable {
+    case local
+    case api
+
+    var id: String { rawValue }
+}
+
+struct APITranslationConfig: Codable, Equatable {
+    var providerID: String = APIProviderCatalog.openAI.id
+    var model: String = APIProviderCatalog.openAI.defaultModel
+    var baseURL: String = APIProviderCatalog.openAI.baseURL
+
+    init() {}
+}
+
+struct APIProviderEntry: Identifiable, Hashable {
+    var id: String
+    var displayName: String
+    var baseURL: String
+    var defaultModel: String
+}
+
+enum APIProviderCatalog {
+    static let openAI = APIProviderEntry(
+        id: "openai", displayName: "OpenAI",
+        baseURL: "https://api.openai.com/v1", defaultModel: "gpt-4.1-mini")
+
+    static let entries: [APIProviderEntry] = [
+        openAI,
+        APIProviderEntry(
+            id: "openrouter", displayName: "OpenRouter",
+            baseURL: "https://openrouter.ai/api/v1", defaultModel: "openai/gpt-4.1-mini"),
+        APIProviderEntry(
+            id: "groq", displayName: "Groq",
+            baseURL: "https://api.groq.com/openai/v1", defaultModel: "llama-3.1-8b-instant"),
+        APIProviderEntry(
+            id: "deepseek", displayName: "DeepSeek",
+            baseURL: "https://api.deepseek.com", defaultModel: "deepseek-chat"),
+        APIProviderEntry(
+            id: "custom", displayName: "自訂 OpenAI 相容 API",
+            baseURL: "", defaultModel: "")
+    ]
+
+    static func entry(for id: String) -> APIProviderEntry {
+        entries.first { $0.id == id } ?? openAI
+    }
+}
+
+enum APIKeyStore {
+    private static let service = (Bundle.main.bundleIdentifier ?? "com.seanhuang.multisub").replacingOccurrences(of: ".Extension", with: "").replacingOccurrences(of: ".App", with: "") + ".api-key"
+
+    static func apiKey(providerID: String) -> String? {
+        if let data = copyData(providerID: providerID, useAccessGroup: true),
+           let value = String(data: data, encoding: .utf8), !value.isEmpty {
+            return value
+        }
+        if let data = copyData(providerID: providerID, useAccessGroup: false),
+           let value = String(data: data, encoding: .utf8), !value.isEmpty {
+            return value
+        }
+        return nil
+    }
+
+    static func hasAPIKey(providerID: String) -> Bool {
+        apiKey(providerID: providerID) != nil
+    }
+
+    static func setAPIKey(_ key: String, providerID: String) throws {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        try deleteAPIKey(providerID: providerID)
+        guard !trimmed.isEmpty else { return }
+
+        let data = Data(trimmed.utf8)
+        let status = SecItemAdd(query(providerID: providerID, useAccessGroup: true, data: data) as CFDictionary, nil)
+        if status == errSecSuccess { return }
+
+        let fallbackStatus = SecItemAdd(query(providerID: providerID, useAccessGroup: false, data: data) as CFDictionary, nil)
+        guard fallbackStatus == errSecSuccess else { throw KeychainError(status: fallbackStatus) }
+    }
+
+    static func deleteAPIKey(providerID: String) throws {
+        let status = SecItemDelete(query(providerID: providerID, useAccessGroup: true) as CFDictionary)
+        let fallbackStatus = SecItemDelete(query(providerID: providerID, useAccessGroup: false) as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound ||
+              fallbackStatus == errSecSuccess || fallbackStatus == errSecItemNotFound else {
+            throw KeychainError(status: status)
+        }
+    }
+
+    private static func copyData(providerID: String, useAccessGroup: Bool) -> Data? {
+        var q = query(providerID: providerID, useAccessGroup: useAccessGroup)
+        q[kSecReturnData as String] = true
+        q[kSecMatchLimit as String] = kSecMatchLimitOne
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(q as CFDictionary, &item)
+        guard status == errSecSuccess else { return nil }
+        return item as? Data
+    }
+
+    private static func query(providerID: String, useAccessGroup: Bool, data: Data? = nil) -> [String: Any] {
+        var q: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: providerID
+        ]
+        if useAccessGroup, let accessGroup = MultiSubPaths.appGroupID {
+            q[kSecAttrAccessGroup as String] = accessGroup
+        }
+        if let data {
+            q[kSecValueData as String] = data
+            q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        }
+        return q
+    }
+
+    struct KeychainError: LocalizedError {
+        var status: OSStatus
+
+        var errorDescription: String? {
+            SecCopyErrorMessageString(status, nil) as String? ?? "Keychain error \(status)"
         }
     }
 }
@@ -303,6 +431,11 @@ struct VocabWord: Codable, Equatable {
     /// `Translator.firstCueIndex`). Not currently surfaced in the UI (V3 has
     /// no player to jump to), kept for future use.
     var cueIndex: Int
+}
+
+struct InlineAnnotation: Codable, Equatable {
+    var term: String
+    var translation: String
 }
 
 /// V3 (PLAN.md Phase V): one episode's worth of extracted vocabulary,
@@ -436,10 +569,14 @@ enum PendingTranscriptStore {
 
 enum TranslatorError: LocalizedError {
     case modelNotDownloaded
+    case apiKeyMissing
+    case badAPIResponse(String)
 
     var errorDescription: String? {
         switch self {
         case .modelNotDownloaded: return "model-not-ready"
+        case .apiKeyMissing: return "尚未設定 API key"
+        case .badAPIResponse(let message): return message
         }
     }
 }
@@ -587,9 +724,8 @@ actor Translator {
         guard !lines.isEmpty else { return [] }
         activeRequests += 1
         defer { activeRequests -= 1 }
-        let modelID = MultiSubConfig.load().modelID
-        try await loadModel(modelID: modelID, allowDownload: false)
-        guard let container else { throw TranslatorError.modelNotDownloaded }
+        let config = MultiSubConfig.load()
+        try await prepareForGeneration(config: config)
 
         let language = LanguageNames.name(for: targetLang)
         let system = systemPrompt(language: language)
@@ -601,15 +737,15 @@ actor Translator {
             ? reference! : Array(repeating: nil, count: lines.count)
 
         if lines.count == 1 {
-            let out = try await respond(container: container, system: system,
+            let out = try await respond(system: system,
                                         prompt: singlePrompt(lines[0], language: language, reference: ref[0],
-                                                             glossaryBlock: glossaryBlock))
+                                                             glossaryBlock: glossaryBlock), config: config)
             return [cleanLine(out)]
         }
 
-        let batchOut = try await respond(container: container, system: system,
+        let batchOut = try await respond(system: system,
                                          prompt: batchPrompt(lines, language: language, reference: ref,
-                                                             glossaryBlock: glossaryBlock))
+                                                             glossaryBlock: glossaryBlock), config: config)
         if let parsed = parseNumbered(batchOut, expected: lines.count) {
             return parsed
         }
@@ -617,9 +753,9 @@ actor Translator {
         var results: [String] = []
         results.reserveCapacity(lines.count)
         for (i, line) in lines.enumerated() {
-            let out = try await respond(container: container, system: system,
+            let out = try await respond(system: system,
                                         prompt: singlePrompt(line, language: language, reference: ref[i],
-                                                             glossaryBlock: glossaryBlock))
+                                                             glossaryBlock: glossaryBlock), config: config)
             results.append(cleanLine(out))
         }
         return results
@@ -636,14 +772,32 @@ actor Translator {
         guard !pairs.isEmpty else { return [:] }
         activeRequests += 1
         defer { activeRequests -= 1 }
-        let modelID = MultiSubConfig.load().modelID
-        try await loadModel(modelID: modelID, allowDownload: false)
-        guard let container else { throw TranslatorError.modelNotDownloaded }
+        let config = MultiSubConfig.load()
+        try await prepareForGeneration(config: config)
 
         let language = LanguageNames.name(for: targetLang)
-        let out = try await respond(container: container, system: glossarySystemPrompt(language: language),
-                                    prompt: glossaryExtractionPrompt(pairs, language: language))
+        let out = try await respond(system: glossarySystemPrompt(language: language),
+                                    prompt: glossaryExtractionPrompt(pairs, language: language), config: config)
         return Self.parseGlossaryJSON(out)
+    }
+
+    // MARK: - Inline learning annotations
+
+    /// Picks a few difficult words/phrases from one subtitle line and returns
+    /// concise context-specific translations for inline study hints.
+    func annotateLine(_ line: String, targetLang: String) async throws -> [InlineAnnotation] {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        activeRequests += 1
+        defer { activeRequests -= 1 }
+        let config = MultiSubConfig.load()
+        try await prepareForGeneration(config: config)
+
+        let language = LanguageNames.name(for: targetLang)
+        let out = try await respond(system: annotationSystemPrompt(language: language),
+                                    prompt: annotationPrompt(trimmed, language: language),
+                                    config: config, maxTokens: 512)
+        return Self.parseInlineAnnotations(out, source: trimmed)
     }
 
     // MARK: - Vocabulary extraction (V2, PLAN.md Phase V / docs/vocab-design.md §5)
@@ -667,9 +821,8 @@ actor Translator {
         // 60s idle-unload timer could yank the model out mid-extraction.
         activeRequests += 1
         defer { activeRequests -= 1 }
-        let modelID = MultiSubConfig.load().modelID
-        try await loadModel(modelID: modelID, allowDownload: false)
-        guard let container else { throw TranslatorError.modelNotDownloaded }
+        let config = MultiSubConfig.load()
+        try await prepareForGeneration(config: config)
 
         let language = LanguageNames.name(for: targetLang)
         let segments = stride(from: 0, to: lines.count, by: Self.vocabSegmentSize).map {
@@ -707,7 +860,7 @@ actor Translator {
             // the top of the function — a long episode's extraction can
             // outlast the idle threshold on its own otherwise.
             markUsed()
-            let entries = (try? await extractVocabSegment(container: container, lines: segment, language: language)) ?? []
+            let entries = (try? await extractVocabSegment(lines: segment, language: language, config: config)) ?? []
             for entry in entries {
                 let lemma = entry.lemma.lowercased()
                 guard !lemma.isEmpty, !Self.isFilteredWord(lemma) else { continue }
@@ -733,14 +886,14 @@ actor Translator {
     /// output (mirrors the retry conventions used elsewhere in this file).
     /// Returns `[]` — not an error — if both attempts fail to parse; a bad
     /// segment shouldn't abort the whole episode (vocab-design.md §5.1).
-    private func extractVocabSegment(container: ModelContainer, lines: [String],
-                                     language: String) async throws -> [RawVocabEntry] {
+    private func extractVocabSegment(lines: [String], language: String,
+                                     config: MultiSubConfig) async throws -> [RawVocabEntry] {
         let system = vocabSystemPrompt(language: language)
         let prompt = vocabExtractionPrompt(lines)
-        let out = try await respond(container: container, system: system, prompt: prompt)
+        let out = try await respond(system: system, prompt: prompt, config: config)
         if let parsed = Self.parseVocabJSON(out) { return parsed }
         let retryPrompt = prompt + "\n\n(Your previous output was not valid JSON. Output ONLY the JSON array described above, nothing else.)"
-        let retryOut = try await respond(container: container, system: system, prompt: retryPrompt)
+        let retryOut = try await respond(system: system, prompt: retryPrompt, config: config)
         return Self.parseVocabJSON(retryOut) ?? []
     }
 
@@ -783,6 +936,23 @@ actor Translator {
             prompt += "\n\(i + 1). \(flat)"
         }
         return prompt
+    }
+
+    private func annotationSystemPrompt(language: String) -> String {
+        """
+        You help language learners read subtitles in the original language. Given one subtitle line, pick only \
+        genuinely useful difficult words, idioms, phrasal verbs, collocations, or grammar chunks that an \
+        intermediate learner might not know. Translate each selected term into \(language) according to this \
+        sentence's context.
+
+        Be selective: return [] for easy lines. Prefer 1-3 annotations, never more than 4. Each "term" must be \
+        an exact contiguous substring from the original line. Keep "translation" short enough to show inline.
+        Output ONLY a JSON array like [{"term":"pull this off","translation":"辦成這件事"}].
+        """
+    }
+
+    private func annotationPrompt(_ line: String, language: String) -> String {
+        "Subtitle line:\n\(line)\n\nReturn difficult terms with context-specific \(language) translations."
     }
 
     /// One model-extracted vocabulary candidate before cross-segment
@@ -828,6 +998,37 @@ actor Translator {
             result.append(RawVocabEntry(word: word, lemma: lemma, pos: pos, cefr: cefr.uppercased(),
                                         definitionEn: definitionEn, translation: translation,
                                         example: example, exampleTranslation: exampleTranslation))
+        }
+        return result
+    }
+
+    private static func parseInlineAnnotations(_ output: String, source: String) -> [InlineAnnotation] {
+        var text = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.hasPrefix("```") {
+            text.removeFirst(3)
+            if text.hasPrefix("json") { text.removeFirst(4) }
+            if let closingRange = text.range(of: "```") {
+                text = String(text[..<closingRange.lowerBound])
+            }
+            text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard let data = text.data(using: .utf8),
+              let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
+        else { return [] }
+        var result: [InlineAnnotation] = []
+        var seen = Set<String>()
+        let lowerSource = source.lowercased()
+        for entry in arr {
+            guard let term = (entry["term"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !term.isEmpty,
+                  let translation = (entry["translation"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !translation.isEmpty
+            else { continue }
+            let key = term.lowercased()
+            guard lowerSource.contains(key), !seen.contains(key) else { continue }
+            seen.insert(key)
+            result.append(InlineAnnotation(term: term, translation: translation))
+            if result.count == 4 { break }
         }
         return result
     }
@@ -902,14 +1103,144 @@ actor Translator {
             .filter { !$0.isEmpty })
     }
 
-    private func respond(container: ModelContainer, system: String, prompt: String) async throws -> String {
+    private func prepareForGeneration(config: MultiSubConfig) async throws {
+        markUsed()
+        switch config.translationEngine {
+        case .local:
+            try await loadModel(modelID: config.modelID, allowDownload: false)
+            guard container != nil else { throw TranslatorError.modelNotDownloaded }
+        case .api:
+            guard APIKeyStore.hasAPIKey(providerID: config.api.providerID) else {
+                throw TranslatorError.apiKeyMissing
+            }
+        }
+    }
+
+    private func respond(system: String, prompt: String, config: MultiSubConfig,
+                         maxTokens: Int = 2048) async throws -> String {
+        switch config.translationEngine {
+        case .local:
+            guard let container else { throw TranslatorError.modelNotDownloaded }
+            return try await respondLocally(container: container, system: system, prompt: prompt, maxTokens: maxTokens)
+        case .api:
+            return try await respondWithAPI(system: system, prompt: prompt, config: config, maxTokens: maxTokens)
+        }
+    }
+
+    private func respondLocally(container: ModelContainer, system: String, prompt: String,
+                                maxTokens: Int) async throws -> String {
         var parameters = GenerateParameters()
         parameters.temperature = 0.0
-        parameters.maxTokens = 2048
+        parameters.maxTokens = maxTokens
         // A fresh session per request: subtitle batches are independent and we
         // don't want history to accumulate KV cache across an episode.
         let session = ChatSession(container, instructions: system, generateParameters: parameters)
         return try await session.respond(to: prompt)
+    }
+
+    private nonisolated func respondWithAPI(system: String, prompt: String, config: MultiSubConfig,
+                                            maxTokens: Int) async throws -> String {
+        guard let apiKey = APIKeyStore.apiKey(providerID: config.api.providerID) else {
+            throw TranslatorError.apiKeyMissing
+        }
+        guard let base = URL(string: config.api.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)),
+              !config.api.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw TranslatorError.badAPIResponse("API 設定不完整")
+        }
+
+        var request = URLRequest(url: base.appendingPathComponent("chat").appendingPathComponent("completions"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 60
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if config.api.providerID == "openrouter" {
+            request.setValue("MultiSub", forHTTPHeaderField: "X-Title")
+        }
+
+        let modelName = config.api.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lastComponent = modelName.split(separator: "/").last?.lowercased() ?? ""
+        let isReasoningModel = lastComponent.hasPrefix("o") && lastComponent.dropFirst().first?.isNumber == true
+
+        let body = APIChatRequest(
+            model: modelName,
+            messages: [
+                APIChatMessage(role: "system", content: system),
+                APIChatMessage(role: "user", content: prompt)
+            ],
+            temperature: 0,
+            maxTokens: isReasoningModel ? nil : maxTokens,
+            maxCompletionTokens: isReasoningModel ? maxTokens : nil
+        )
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw TranslatorError.badAPIResponse("API 沒有回傳有效 HTTP 回應")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let message = Self.extractAPIErrorMessage(data) ?? "API HTTP \(http.statusCode)"
+            throw TranslatorError.badAPIResponse(message)
+        }
+        let decoded = try JSONDecoder().decode(APIChatResponse.self, from: data)
+        guard let content = decoded.choices.first?.message.content.trimmingCharacters(in: .whitespacesAndNewlines),
+              !content.isEmpty else {
+            throw TranslatorError.badAPIResponse("API 回應沒有翻譯內容")
+        }
+        return content
+    }
+
+    private struct APIChatRequest: Encodable {
+        var model: String
+        var messages: [APIChatMessage]
+        var temperature: Double
+        var maxTokens: Int?
+        var maxCompletionTokens: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case model, messages, temperature
+            case maxTokens = "max_tokens"
+            case maxCompletionTokens = "max_completion_tokens"
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(model, forKey: .model)
+            try container.encode(messages, forKey: .messages)
+            try container.encode(temperature, forKey: .temperature)
+            if let maxTokens {
+                try container.encode(maxTokens, forKey: .maxTokens)
+            }
+            if let maxCompletionTokens {
+                try container.encode(maxCompletionTokens, forKey: .maxCompletionTokens)
+            }
+        }
+    }
+
+    private struct APIChatMessage: Codable {
+        var role: String
+        var content: String
+    }
+
+    private struct APIChatResponse: Decodable {
+        var choices: [Choice]
+
+        struct Choice: Decodable {
+            var message: APIChatMessage
+        }
+    }
+
+    private static func extractAPIErrorMessage(_ data: Data) -> String? {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return String(data: data, encoding: .utf8)
+        }
+        if let error = obj["error"] as? [String: Any],
+           let message = error["message"] as? String {
+            return message
+        }
+        if let message = obj["message"] as? String {
+            return message
+        }
+        return nil
     }
 
     private func systemPrompt(language: String) -> String {

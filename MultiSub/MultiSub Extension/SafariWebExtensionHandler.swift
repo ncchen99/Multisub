@@ -12,9 +12,10 @@ import AppKit
 import SafariServices
 import os.log
 
-let logger = Logger(subsystem: "com.seanhuang.multisub.Extension", category: "native")
+let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.seanhuang.multisub.Extension", category: "native")
 
-class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
+@MainActor
+class SafariWebExtensionHandler: NSObject, @preconcurrency NSExtensionRequestHandling {
 
     func beginRequest(with context: NSExtensionContext) {
         let request = context.inputItems.first as? NSExtensionItem
@@ -30,6 +31,8 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
                 reply = await handleTranslate(message)
             case "extract-glossary":
                 reply = await handleExtractGlossary(message)
+            case "annotate-line":
+                reply = await handleAnnotateLine(message)
             case "unload":
                 reply = await handleUnload()
             case "open-app":
@@ -81,6 +84,9 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
 
         var reply: [String: Any] = [
             "ok": true,
+            "translationEngine": config.translationEngine.rawValue,
+            "apiProvider": APIProviderCatalog.entry(for: config.api.providerID).displayName,
+            "apiKeyConfigured": APIKeyStore.hasAPIKey(providerID: config.api.providerID),
             "modelId": config.modelID,
             "modelDownloaded": downloaded,
             "modelLoaded": loaded,
@@ -217,6 +223,22 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
     private func handleUnload() async -> [String: Any] {
         await Translator.shared.unload()
         return ["ok": true]
+    }
+
+    private func handleAnnotateLine(_ message: [String: Any]) async -> [String: Any] {
+        guard let text = message["text"] as? String, !text.isEmpty else {
+            return ["ok": false, "error": "bad-request"]
+        }
+        let targetLang = message["targetLang"] as? String ?? "zh-TW"
+        do {
+            let annotations = try await Translator.shared.annotateLine(text, targetLang: targetLang)
+            return ["ok": true, "annotations": annotations.map { ["term": $0.term, "translation": $0.translation] }]
+        } catch TranslatorError.modelNotDownloaded {
+            return ["ok": false, "error": "model-not-ready"]
+        } catch {
+            logger.error("annotate-line failed: \(String(describing: error))")
+            return ["ok": false, "error": "annotate-failed: \(error.localizedDescription)"]
+        }
     }
 
     private func handleExtractGlossary(_ message: [String: Any]) async -> [String: Any] {

@@ -7,8 +7,13 @@
 		<!-- R2c: $(TeamIdentifierPrefix) expands at build time to the signing
 		     team's ID plus a trailing dot, keeping a literal Team ID out of the
 		     public repo. Must stay identical to the host app's group string. -->
-		<string>$(TeamIdentifierPrefix)com.seanhuang.multisub</string>
-		<string>group.com.seanhuang.multisub</string>
+		<string>$(TeamIdentifierPrefix)$(MULTISUB_BUNDLE_PREFIX).multisub</string>
 	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)$(MULTISUB_BUNDLE_PREFIX).multisub</string>
+	</array>
+	<key>com.apple.security.network.client</key>
+	<true/>
 </dict>
 </plist>

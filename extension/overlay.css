@@ -49,6 +49,41 @@
   line-height: 1.2;
 }
 
+#multisub-original.multisub-inline-hints {
+  max-width: 88%;
+  line-height: 1.35;
+}
+
+#multisub-original.multisub-inline-hints .ms-annotated-line {
+  display: block;
+  line-height: 1.55;
+}
+
+#multisub-original .ms-term {
+  position: relative;
+  display: inline-block;
+  margin: 0 0.08em;
+  padding: 0 0.08em;
+  color: #fff7b0;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 230, 90, 0.9);
+  text-decoration-thickness: 0.09em;
+  text-underline-offset: 0.16em;
+}
+
+#multisub-original .ms-gloss {
+  display: inline-block;
+  margin-left: 0.22em;
+  padding: 0.02em 0.28em;
+  border-radius: 0.25em;
+  background: rgba(255, 225, 96, 0.22);
+  color: #ffe777;
+  font-size: 0.58em;
+  font-weight: 700;
+  vertical-align: 0.18em;
+  white-space: nowrap;
+}
+
 #multisub-hint {
   display: none;
   font-family: system-ui, sans-serif;
