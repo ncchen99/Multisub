@@ -1159,7 +1159,17 @@ actor Translator {
 
         let modelName = config.api.model.trimmingCharacters(in: .whitespacesAndNewlines)
         let lastComponent = modelName.split(separator: "/").last?.lowercased() ?? ""
-        let isReasoningModel = lastComponent.hasPrefix("o") && lastComponent.dropFirst().first?.isNumber == true
+        let isReasoningModel = (lastComponent.hasPrefix("o") && lastComponent.dropFirst().first?.isNumber == true)
+            || lastComponent.contains("reasoner")
+            || lastComponent.contains("reasoning")
+            || lastComponent.contains("-r1")
+            || lastComponent.hasPrefix("r1-")
+            || lastComponent == "r1"
+            || lastComponent.contains("qwq")
+
+        let useMaxCompletionTokens = isReasoningModel
+            || lastComponent.contains("gpt-5")
+            || config.api.providerID == "groq"
 
         let body = APIChatRequest(
             model: modelName,
@@ -1167,9 +1177,9 @@ actor Translator {
                 APIChatMessage(role: "system", content: system),
                 APIChatMessage(role: "user", content: prompt)
             ],
-            temperature: 0,
-            maxTokens: isReasoningModel ? nil : maxTokens,
-            maxCompletionTokens: isReasoningModel ? maxTokens : nil
+            temperature: isReasoningModel ? nil : 0,
+            maxTokens: useMaxCompletionTokens ? nil : maxTokens,
+            maxCompletionTokens: useMaxCompletionTokens ? maxTokens : nil
         )
         request.httpBody = try JSONEncoder().encode(body)
 
@@ -1192,7 +1202,7 @@ actor Translator {
     private struct APIChatRequest: Encodable {
         var model: String
         var messages: [APIChatMessage]
-        var temperature: Double
+        var temperature: Double?
         var maxTokens: Int?
         var maxCompletionTokens: Int?
 
@@ -1206,7 +1216,9 @@ actor Translator {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(model, forKey: .model)
             try container.encode(messages, forKey: .messages)
-            try container.encode(temperature, forKey: .temperature)
+            if let temperature {
+                try container.encode(temperature, forKey: .temperature)
+            }
             if let maxTokens {
                 try container.encode(maxTokens, forKey: .maxTokens)
             }
