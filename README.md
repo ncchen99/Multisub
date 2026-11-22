@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/macOS-15%2B-000000?logo=apple" alt="macOS 15+">
   <img src="https://img.shields.io/badge/Safari-Web%20Extension-006CFF?logo=safari&logoColor=white" alt="Safari Web Extension">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License"></a>
-  <a href="https://deepwiki.com/snch1211/multisub"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+  <a href="https://deepwiki.com/snch1211/multisub"><img src="https://img.shields.io/badge/DeepWiki-Ask_AI-2563eb" alt="Ask DeepWiki"></a>
 </p>
 
 <p align="center">
@@ -39,7 +39,7 @@
 
 模式在 Safari 工具列的 MultiSub 選單切換，選過就會記住。另外還有：
 
-- **生詞本**：在背景把整集英文單字依 CEFR 分級整理，附解釋、翻譯和例句
+- **生詞本**：在背景把整集英文單字依 CEFR 分級整理，附解釋、翻譯和例句，單字和例句都能播放發音（美式或英式）
 - **字幕樣式**：字級、顏色、外框、字型都能調，位置可以直接在影片上拖曳
 - **快取**：處理過的集數會保存，重看不用再等
 
